@@ -18,11 +18,13 @@ climate_plan = {
     "Змішаний": {1: ["LED", "Утеплення", "Solar"], 2: ["Solar"], 5: ["Smart_meter", "Smart_home"]}
 }
 
-def simulate_energy(buildings, budget, climate):
-    base_consumption = sum(buildings[b]["count"]*buildings[b]["consumption"]*12 for b in buildings)
+def simulate_energy(buildings, budget, climate, price_per_mwh=1):
+    base_yearly = sum(buildings[b]["count"]*buildings[b]["consumption"]*12 for b in buildings)
     yearly_consumption = []
     plan_per_year = []
+    
     remaining_budget = budget
+    current_consumption = base_yearly
     
     for year in range(1, 11):
         # Вибір заходів
@@ -32,19 +34,30 @@ def simulate_energy(buildings, budget, climate):
             active_measures = climate_plan[climate][2]
         else:
             active_measures = climate_plan[climate][5]
-        
+
+        # Рахуємо вартість та масштабуємо під доступний бюджет
         total_cost = sum([measures[m]["cost"] for m in active_measures])
         scale = min(1, remaining_budget / total_cost)
-        remaining_budget = remaining_budget - total_cost*scale + budget
-        
-        # Застосування ефекту,загальний коефіцієнт зниження споживання
+
+        # Ефект заходів
         multiplier = np.prod([1 - measures[m]["effect"]*scale for m in active_measures])
-        base_consumption *= multiplier
-        yearly_consumption.append(base_consumption)
+        new_consumption = current_consumption * multiplier
         
-        plan_per_year.append([{ "name": m, "effect": measures[m]["effect"]*scale, "color": measures[m]["color"] } 
-                              for m in active_measures])
+        # Таблиця заходів
+        plan_per_year.append([{
+            "name": m, 
+            "effect": measures[m]["effect"]*scale, 
+            "color": measures[m]["color"]
+        } for m in active_measures])
+
+        yearly_consumption.append(new_consumption)
+        saved_energy = (current_consumption - new_consumption)  
+        saved_budget = saved_energy * price_per_mwh / 1e6  
         
+        # Наступний рік
+        remaining_budget = budget + saved_budget
+        current_consumption = new_consumption
+
     return yearly_consumption, plan_per_year
 
 app = dash.Dash(__name__)
